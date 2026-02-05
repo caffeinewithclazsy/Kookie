@@ -1,0 +1,7 @@
+{
+  "name": "Kookie: Multimodal AI Companion",
+  "description": "A voice-first AI companion that adapts its personality (tutor vs. friend) based on your tone and needs, using real-time emotional intelligence.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
