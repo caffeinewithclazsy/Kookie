@@ -8,6 +8,11 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        // Enable HTTPS for network access to microphone
+        https: {
+          // This will generate a self-signed certificate automatically
+          // The certificate will be cached in node_modules/.vite/deps
+        },
       },
       plugins: [react()],
       define: {

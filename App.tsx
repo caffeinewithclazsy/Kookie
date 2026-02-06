@@ -69,6 +69,24 @@ const App: React.FC = () => {
   const currentInputTransRef = useRef('');
   const currentOutputTransRef = useRef('');
 
+  const testMicrophoneAccess = async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputDevices = devices.filter(device => device.kind === 'audioinput');
+      
+      if (audioInputDevices.length === 0) {
+        console.warn('No audio input devices found');
+        return false;
+      }
+      
+      console.log('Available audio input devices:', audioInputDevices);
+      return true;
+    } catch (err) {
+      console.error('Error accessing media devices:', err);
+      return false;
+    }
+  };
+
   const stopAllAudio = useCallback(() => {
     sourcesRef.current.forEach(source => {
       try { source.stop(); } catch(e) {}
@@ -89,28 +107,85 @@ const App: React.FC = () => {
 
   const startConversation = async () => {
     try {
+      // Test microphone access first
+      const hasMic = await testMicrophoneAccess();
+      if (!hasMic) {
+        alert('No microphone detected. Please connect a microphone and try again.');
+        return;
+      }
+
+      // Check if we're on a secure context (HTTPS or localhost)
+      const isSecureContext = window.isSecureContext;
+      if (!isSecureContext) {
+        // For network access, provide specific guidance
+        const hostname = window.location.hostname;
+        if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+          console.warn('Application is running over insecure HTTP on a network address. Microphone access may be restricted.');
+          alert('Microphone access requires a secure context. For network access:\n\n' +
+                '1. Use HTTPS (recommended)\n' +
+                '2. Or add an exception in your browser for this site\n\n' +
+                'In Chrome: Go to chrome://flags/#unsafely-treat-insecure-origin-as-secure\n' +
+                'Add your network address there for temporary testing.');
+        }
+      }
+
       // Check if we have microphone permissions first
-      const permissionStatus = await navigator.permissions.query({ name: 'microphone' as any });
+      let permissionStatus;
+      try {
+        permissionStatus = await navigator.permissions.query({ name: 'microphone' as any });
+      } catch (err) {
+        console.log('Permission API not supported, proceeding with getUserMedia');
+        // Continue without permission check for browsers that don't support it
+      }
       
-      if (permissionStatus.state === 'denied') {
+      if (permissionStatus && permissionStatus.state === 'denied') {
         alert('Microphone access has been denied. Please enable microphone permissions in your browser settings and try again.');
         return;
       }
 
       if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-        outAudioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+        // Initialize audio contexts with better compatibility
+        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+        audioCtxRef.current = new AudioContext({ sampleRate: 16000 });
+        outAudioCtxRef.current = new AudioContext({ sampleRate: 24000 });
+        
+        // Resume context if it's suspended (common issue in Chrome)
+        if (audioCtxRef.current.state === 'suspended') {
+          await audioCtxRef.current.resume();
+        }
+        if (outAudioCtxRef.current.state === 'suspended') {
+          await outAudioCtxRef.current.resume();
+        }
       }
 
-      // Request microphone access
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        } 
-      });
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+      // Request microphone access with fallback constraints
+      let stream;
+      try {
+        // For network access, sometimes simpler constraints work better
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 16000
+          } 
+        });
+      } catch (err) {
+        console.warn('Failed to get microphone access with advanced constraints, trying basic constraints:', err);
+        try {
+          // Fallback to basic constraints
+          stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: true 
+          });
+        } catch (basicErr) {
+          console.error('Basic constraints also failed:', basicErr);
+          // Last resort: try with no constraints specified
+          stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: {} 
+          });
+        }
+      }
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
@@ -219,13 +294,15 @@ const App: React.FC = () => {
       console.error("Initialization Failed:", err);
       
       if (err.name === 'NotAllowedError') {
-        alert("Microphone access was denied. Please allow microphone access when prompted and try again.");
+        alert("Microphone access was denied. Please allow microphone access when prompted and try again.\n\nIn Chrome: Click the lock icon in the address bar and enable microphone access.\nIn Safari: Go to Settings > Websites > Microphone and enable access for this site.");
       } else if (err.name === 'NotFoundError') {
         alert("No microphone was found. Please ensure a microphone is connected and try again.");
-      } else if (err.name === 'NotReadableError') {
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
         alert("Microphone is being used by another application. Please close other applications using the microphone.");
+      } else if (err.message && err.message.includes('devices not found')) {
+        alert("No audio devices found. Please check your microphone connections and system audio settings.");
       } else {
-        alert("Microphone access is required for Kookie to function. Please check your browser permissions.");
+        alert(`Microphone access failed: ${err.message || 'Unknown error occurred'}\n\nPlease check:\n- Browser permissions for microphone access\n- Physical microphone connections\n- System audio settings`);
       }
     }
   };
