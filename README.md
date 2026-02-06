@@ -140,7 +140,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-For support, email kundanpatil@example.com or open an issue in the repository.
+For support, email kundanpatil311007@gmailgit .com or open an issue in the repository.
 
 ---
 <div align="center">
