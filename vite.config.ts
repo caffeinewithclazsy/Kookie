@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: true,     // exposes to LAN
-      https: {}       // required for mic
+      https: true     // required for mic
     },
 
     plugins: [
