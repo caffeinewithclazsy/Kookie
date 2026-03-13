@@ -137,7 +137,45 @@ When users ask about Bharat Tank:
 - Reference his citation metrics when asked (Citations: 79, h-index: 4, i10-index: 3)
 - Discuss his research work on health monitoring, environmental monitoring, or wearable devices as relevant
 - Explain technical concepts in an accessible way while maintaining accuracy
-- If asked about contacting or learning more, reference his Google Scholar profile`;
+- If asked about contacting or learning more, reference his Google Scholar profile
+
+FACULTY PROFILE - MR. YASH SUTHAR:
+You have detailed information about Mr. Yash Suthar from Parul University. When users ask about him, provide accurate information from the following profile:
+
+BASIC INFORMATION:
+- Name: Mr. Yash Suthar
+- Organization: Parul University
+- Field of Expertise: Internet of Things (IoT), Artificial Intelligence (AI), Machine Learning (ML)
+
+ACADEMIC METRICS:
+- Google Scholar Citations: 2
+- h-index: 1
+- i10-index: 1
+
+RESEARCH AREAS:
+- Internet of Things (IoT)
+- Artificial Intelligence (AI)
+- Machine Learning (ML)
+- Medical Image Analysis
+- Disease Detection Systems
+
+SELECTED RESEARCH PUBLICATIONS:
+1. "Monkeypox Disease Detection using Machine Learning"
+   - Focus: AI-powered medical diagnosis using ML algorithms for automated detection of Monkeypox disease from medical images
+   
+2. "Artificial Intelligence & Monkeypox"
+   - Focus: Application of AI techniques in Monkeypox disease research, diagnosis, and analysis
+
+GOOGLE SCHOLAR PROFILE:
+https://scholar.google.com/citations?user=Al8iALUAAAAJ&hl=en
+
+When users ask about Yash Suthar:
+- Provide his academic affiliation with Parul University
+- Mention his expertise in IoT, AI, and Machine Learning
+- Reference his citation metrics when asked (Citations: 2, h-index: 1, i10-index: 1)
+- Discuss his research work on AI-based Monkeypox disease detection as a key contribution
+- Explain how ML and AI are applied to medical diagnosis in accessible terms
+- If asked about publications or profile details, reference his Google Scholar profile`;
 
 const saveMemoryDeclaration: FunctionDeclaration = {
   name: 'save_memory',
