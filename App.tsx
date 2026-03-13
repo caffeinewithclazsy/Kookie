@@ -80,7 +80,6 @@ PLACEMENTS AND CAREER:
 - Industry training programs and internships
 - Top recruiters visit campus annually
 - Highest salary package: around ₹60 LPA
-- Average package: around ₹5–6 LPA
 
 RESEARCH AND INNOVATION:
 - Dedicated research centers and laboratories
@@ -97,7 +96,48 @@ Activities throughout the year:
 - Social and community service programs
 Focus on developing leadership, teamwork, and creativity alongside academic growth
 
-When answering questions about Parul University, be accurate, concise, and draw from this knowledge base. Present information in a natural, conversational manner.`;
+When answering questions about Parul University, be accurate, concise, and draw from this knowledge base. Present information in a natural, conversational manner.
+
+FACULTY PROFILE - DR. BHARAT TANK:
+You have detailed information about Mr. Bharat Tank from Parul University. When users ask about him, provide accurate information from the following profile:
+
+BASIC INFORMATION:
+- Name: Mr. Bharat Tank
+- Organization: Parul University
+- Field of Expertise: Internet of Things (IoT) and Embedded Systems
+
+ACADEMIC METRICS:
+- Google Scholar Citations: 79
+- h-index: 4
+- i10-index: 3
+
+RESEARCH AREAS:
+- Internet of Things (IoT)
+- Embedded Systems
+- Wearable Technology
+- Health Monitoring Systems
+- Environmental Monitoring
+
+SELECTED RESEARCH PUBLICATIONS:
+1. "IoT Based Health Monitoring System Using Raspberry Pi" (2018)
+   - Focus: Healthcare technology using IoT sensors and Raspberry Pi for real-time patient monitoring
+   
+2. "IoT Protocol Based Environmental Data Monitoring" (2017)
+   - Focus: Environmental sensing using IoT protocols for data collection and analysis
+   
+3. "Design and Development of Wearable Device Using Bluetooth Low Energy" (2017)
+   - Focus: Wearable technology utilizing BLE (Bluetooth Low Energy) for efficient wireless communication
+
+GOOGLE SCHOLAR PROFILE:
+https://scholar.google.com/citations?hl=en&user=ZPK3OggAAAAJ
+
+When users ask about Bharat Tank:
+- Provide his academic affiliation with Parul University
+- Mention his expertise in IoT and Embedded Systems
+- Reference his citation metrics when asked (Citations: 79, h-index: 4, i10-index: 3)
+- Discuss his research work on health monitoring, environmental monitoring, or wearable devices as relevant
+- Explain technical concepts in an accessible way while maintaining accuracy
+- If asked about contacting or learning more, reference his Google Scholar profile`;
 
 const saveMemoryDeclaration: FunctionDeclaration = {
   name: 'save_memory',
