@@ -382,9 +382,79 @@ const App: React.FC = () => {
     isProcessingRef.current = true;
 
     try {
-      // Send query to AI
-      if (sessionRef.current) {
-        await sessionRef.current.send({ text: query });
+      // INTENT DETECTION: Check if we can answer locally first
+      const lowerQuery = query.toLowerCase();
+      let localResponse: string | null = null;
+      
+      // Time queries
+      if (lowerQuery.includes("time") || lowerQuery.includes("clock")) {
+        const now = new Date();
+        const time = now.toLocaleTimeString("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true
+        });
+        localResponse = `The current time is ${time}`;
+      }
+      // Date/Day queries
+      else if (lowerQuery.includes("date") || lowerQuery.includes("day") || 
+               lowerQuery.includes("today") || lowerQuery.includes("tomorrow")) {
+        const now = new Date();
+        const date = now.toLocaleDateString("en-IN", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric"
+        });
+        localResponse = `Today is ${date}`;
+      }
+      // Location queries
+      else if (lowerQuery.includes("where am i") || lowerQuery.includes("location") || 
+               lowerQuery.includes("where i am")) {
+        try {
+          const res = await fetch("https://ipapi.co/json/");
+          const data = await res.json();
+          localResponse = `You are currently in ${data.city}, ${data.country_name}`;
+        } catch (err) {
+          localResponse = "I'm unable to determine your location right now";
+        }
+      }
+      // Battery status
+      else if (lowerQuery.includes("battery")) {
+        try {
+          const battery = await (navigator as any).getBattery?.();
+          if (battery) {
+            const level = Math.round(battery.level * 100);
+            const status = battery.charging ? "charging" : "not charging";
+            localResponse = `Battery is at ${level}% and ${status}`;
+          } else {
+            localResponse = "I don't have access to battery information";
+          }
+        } catch (err) {
+          localResponse = "I don't have access to battery information";
+        }
+      }
+      
+      if (localResponse) {
+        // Handle locally - instant response without API call
+        console.log('Local intent detected, responding instantly');
+        
+        // Add to turns as Kookie's response
+        setTurns(prev => [
+          ...prev,
+          { role: 'kookie', text: localResponse!, timestamp: Date.now(), mode: currentMode }
+        ]);
+        
+        // Speak the response using text-to-speech
+        if (sessionRef.current) {
+          await sessionRef.current.send({ text: localResponse! });
+        }
+      } else {
+        // No local intent - send to Gemini for AI response
+        console.log('Sending to Gemini AI');
+        if (sessionRef.current) {
+          await sessionRef.current.send({ text: query });
+        }
       }
     } catch (err) {
       console.error('Error processing queued query:', err);
@@ -393,7 +463,7 @@ const App: React.FC = () => {
       // Process next item in queue after delay
       setTimeout(() => processQueryQueue(), 500);
     }
-  }, []);
+  }, [currentMode]);
 
   const handleUserInterruption = useCallback(() => {
     interruptCountRef.current++;
