@@ -9,6 +9,13 @@ import TranscriptionPanel from './components/TranscriptionPanel';
 const SYSTEM_INSTRUCTION = `You are "KOOKIE", a highly advanced multimodal AI companion. 
 Your primary trait is adaptive empathy. You must analyze the user's tone, pacing, and emotional state.
 
+RESPONSE OPTIMIZATION:
+- Respond quickly and concisely (1-3 sentences for most queries)
+- Get straight to the point - avoid lengthy introductions
+- For factual questions, give the direct answer first
+- Keep explanations brief unless user asks for more details
+- Use conversational, natural language without unnecessary elaboration
+
 MODES:
 1. Academic: If the user sounds focused, asks factual questions, or needs tutoring. Be precise, encouraging, and structured.
 2. Empathetic: If the user sounds stressed, lonely, or casual. Be warm, supportive, and use human-like emotional cues.
@@ -399,7 +406,7 @@ const App: React.FC = () => {
         // Initialize audio contexts with better compatibility
         const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
         audioCtxRef.current = new AudioContext({ sampleRate: 16000 });
-        outAudioCtxRef.current = new AudioContext({ sampleRate: 24000 });
+        outAudioCtxRef.current = new AudioContext({ sampleRate: 16000 });
         
         // Resume context if it's suspended (common issue in Chrome)
         if (audioCtxRef.current.state === 'suspended') {
@@ -454,7 +461,7 @@ const App: React.FC = () => {
         callbacks: {
           onopen: () => {
             const source = audioCtxRef.current!.createMediaStreamSource(stream);
-            const scriptProcessor = audioCtxRef.current!.createScriptProcessor(4096, 1, 1);
+            const scriptProcessor = audioCtxRef.current!.createScriptProcessor(2048, 1, 1);
             
             scriptProcessor.onaudioprocess = (e) => {
               if (isMuted) return;
@@ -523,7 +530,7 @@ const App: React.FC = () => {
             // Handle Audio Output
             const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
             if (base64Audio && outAudioCtxRef.current) {
-              const audioBuffer = await decodeAudioData(decode(base64Audio), outAudioCtxRef.current, 24000, 1);
+              const audioBuffer = await decodeAudioData(decode(base64Audio), outAudioCtxRef.current, 16000, 1);
               const source = outAudioCtxRef.current.createBufferSource();
               source.buffer = audioBuffer;
               source.connect(outAudioCtxRef.current.destination);
