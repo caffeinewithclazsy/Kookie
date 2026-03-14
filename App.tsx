@@ -486,67 +486,92 @@ const App: React.FC = () => {
             setIsActive(true);
           },
           onmessage: async (message: LiveServerMessage) => {
-            // Handle Transcriptions
+            // PARALLEL OPTIMIZATION: Handle all operations concurrently for faster response
+            const promises: Promise<any>[] = [];
+
+            // Handle Transcriptions (non-blocking)
             if (message.serverContent?.inputTranscription) {
               currentInputTransRef.current += message.serverContent.inputTranscription.text;
             }
             if (message.serverContent?.outputTranscription) {
               currentOutputTransRef.current += message.serverContent.outputTranscription.text;
             }
+
+            // Handle Turn Completion
             if (message.serverContent?.turnComplete) {
               const uText = currentInputTransRef.current;
               const aText = currentOutputTransRef.current;
               if (uText || aText) {
-                setTurns(prev => [
-                  ...prev, 
-                  ...(uText ? [{ role: 'user', text: uText, timestamp: Date.now() } as MessageTurn] : []),
-                  ...(aText ? [{ role: 'kookie', text: aText, timestamp: Date.now(), mode: currentMode } as MessageTurn] : [])
-                ]);
+                promises.push(
+                  new Promise<void>(resolve => {
+                    setTurns(prev => [
+                      ...prev, 
+                      ...(uText ? [{ role: 'user', text: uText, timestamp: Date.now() } as MessageTurn] : []),
+                      ...(aText ? [{ role: 'kookie', text: aText, timestamp: Date.now(), mode: currentMode } as MessageTurn] : [])
+                    ]);
+                    resolve();
+                  })
+                );
               }
               currentInputTransRef.current = '';
               currentOutputTransRef.current = '';
             }
 
-            // Handle Interruption
+            // Handle Interruption (immediate priority)
             if (message.serverContent?.interrupted) {
               stopAllAudio();
             }
 
-            // Handle Tool Calls
+            // Handle Tool Calls (parallel execution)
             if (message.toolCall) {
               for (const fc of message.toolCall.functionCalls) {
                 if (fc.name === 'save_memory') {
                   const args = fc.args as any;
                   setMemories(prev => [...prev, { key: args.key, value: args.value }]);
-                  sessionPromise.then(s => s.sendToolResponse({ 
-                    functionResponses: { id: fc.id, name: fc.name, response: { result: "Memory saved." } } 
-                  }));
+                  promises.push(
+                    sessionPromise.then(s => s.sendToolResponse({ 
+                      functionResponses: { id: fc.id, name: fc.name, response: { result: "Memory saved." } } 
+                    }))
+                  );
                 }
                 if (fc.name === 'set_persona_mode') {
                   const args = fc.args as any;
                   setCurrentMode(args.mode as PersonaMode);
-                  sessionPromise.then(s => s.sendToolResponse({ 
-                    functionResponses: { id: fc.id, name: fc.name, response: { result: `Mode switched to ${args.mode}.` } } 
-                  }));
+                  promises.push(
+                    sessionPromise.then(s => s.sendToolResponse({ 
+                      functionResponses: { id: fc.id, name: fc.name, response: { result: `Mode switched to ${args.mode}.` } } 
+                    }))
+                  );
                 }
               }
             }
 
-            // Handle Audio Output
+            // PARALLEL AUDIO: Decode and playback immediately without blocking other operations
             const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
             if (base64Audio && outAudioCtxRef.current) {
-              const audioBuffer = await decodeAudioData(decode(base64Audio), outAudioCtxRef.current, 24000, 1);
-              const source = outAudioCtxRef.current.createBufferSource();
-              source.buffer = audioBuffer;
-              source.connect(outAudioCtxRef.current.destination);
-              
-              nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outAudioCtxRef.current.currentTime);
-              source.start(nextStartTimeRef.current);
-              nextStartTimeRef.current += audioBuffer.duration;
-              
-              sourcesRef.current.add(source);
-              source.onended = () => sourcesRef.current.delete(source);
+              promises.push(
+                (async () => {
+                  try {
+                    const audioBuffer = await decodeAudioData(decode(base64Audio), outAudioCtxRef.current, 24000, 1);
+                    const source = outAudioCtxRef.current.createBufferSource();
+                    source.buffer = audioBuffer;
+                    source.connect(outAudioCtxRef.current.destination);
+                    
+                    nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outAudioCtxRef.current.currentTime);
+                    source.start(nextStartTimeRef.current);
+                    nextStartTimeRef.current += audioBuffer.duration;
+                    
+                    sourcesRef.current.add(source);
+                    source.onended = () => sourcesRef.current.delete(source);
+                  } catch (err) {
+                    console.error('Parallel audio playback error:', err);
+                  }
+                })()
+              );
             }
+
+            // Execute all operations in parallel - don't wait for any single one
+            await Promise.allSettled(promises);
           },
           onerror: (e) => console.error("Session Error:", e),
           onclose: () => setIsActive(false),
