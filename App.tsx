@@ -329,6 +329,17 @@ const App: React.FC = () => {
   const interruptCountRef = useRef(0);            // Interrupt counter
   const queryQueueRef = useRef<string[]>([]);     // Input queue
   const isProcessingRef = useRef(false);          // Processing lock
+  
+  // SMART CONTEXT AWARENESS
+  const lastInteractionRef = useRef<number>(Date.now());
+  const conversationModeRef = useRef(false);      // Active conversation state
+  const previousQueryRef = useRef<string>('');    // Context from last query
+  const contextRef = useRef({
+    time: new Date(),
+    location: null as string | null,
+    lastQuery: '',
+    interactionCount: 0
+  });
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const outAudioCtxRef = useRef<AudioContext | null>(null);
@@ -380,81 +391,104 @@ const App: React.FC = () => {
     }
 
     isProcessingRef.current = true;
+    updateContext(); // Update conversation state
 
     try {
-      // INTENT DETECTION: Check if we can answer locally first
       const lowerQuery = query.toLowerCase();
-      let localResponse: string | null = null;
-      
-      // Time queries
-      if (lowerQuery.includes("time") || lowerQuery.includes("clock")) {
-        const now = new Date();
-        const time = now.toLocaleTimeString("en-IN", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true
-        });
-        localResponse = `The current time is ${time}`;
+      let response: string | null = null;
+
+      // MEMORY COMMAND DETECTION (Priority 1)
+      const memoryCommand = detectMemoryCommand(query);
+      if (memoryCommand) {
+        response = await handleMemoryCommand(memoryCommand);
+        console.log('Memory command handled');
       }
-      // Date/Day queries
-      else if (lowerQuery.includes("date") || lowerQuery.includes("day") || 
-               lowerQuery.includes("today") || lowerQuery.includes("tomorrow")) {
-        const now = new Date();
-        const date = now.toLocaleDateString("en-IN", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric"
-        });
-        localResponse = `Today is ${date}`;
-      }
-      // Location queries
-      else if (lowerQuery.includes("where am i") || lowerQuery.includes("location") || 
-               lowerQuery.includes("where i am")) {
-        try {
-          const res = await fetch("https://ipapi.co/json/");
-          const data = await res.json();
-          localResponse = `You are currently in ${data.city}, ${data.country_name}`;
-        } catch (err) {
-          localResponse = "I'm unable to determine your location right now";
+
+      // LOCAL INTENT DETECTION (Priority 2)
+      if (!response) {
+        // Time queries
+        if (lowerQuery.includes("time") || lowerQuery.includes("clock")) {
+          const now = new Date();
+          const greeting = getNaturalGreeting();
+          const time = now.toLocaleTimeString("en-IN", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true
+          });
+          response = `${greeting}! The current time is ${time}`;
         }
-      }
-      // Battery status
-      else if (lowerQuery.includes("battery")) {
-        try {
-          const battery = await (navigator as any).getBattery?.();
-          if (battery) {
-            const level = Math.round(battery.level * 100);
-            const status = battery.charging ? "charging" : "not charging";
-            localResponse = `Battery is at ${level}% and ${status}`;
-          } else {
-            localResponse = "I don't have access to battery information";
+        // Date/Day queries
+        else if (lowerQuery.includes("date") || lowerQuery.includes("day") || 
+                 lowerQuery.includes("today") || lowerQuery.includes("tomorrow")) {
+          const now = new Date();
+          const date = now.toLocaleDateString("en-IN", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric"
+          });
+          response = `Today is ${date}`;
+        }
+        // Location queries
+        else if (lowerQuery.includes("where am i") || lowerQuery.includes("location") || 
+                 lowerQuery.includes("where i am")) {
+          try {
+            const res = await fetch("https://ipapi.co/json/");
+            const data = await res.json();
+            response = `You are currently in ${data.city}, ${data.country_name}`;
+          } catch (err) {
+            response = "I'm unable to determine your location right now";
           }
-        } catch (err) {
-          localResponse = "I don't have access to battery information";
+        }
+        // Battery status
+        else if (lowerQuery.includes("battery")) {
+          try {
+            const battery = await (navigator as any).getBattery?.();
+            if (battery) {
+              const level = Math.round(battery.level * 100);
+              const status = battery.charging ? "charging" : "not charging";
+              response = `Battery is at ${level}% and ${status}`;
+            } else {
+              response = "I don't have access to battery information";
+            }
+          } catch (err) {
+            response = "I don't have access to battery information";
+          }
         }
       }
-      
-      if (localResponse) {
-        // Handle locally - instant response without API call
-        console.log('Local intent detected, responding instantly');
+
+      // Send response or forward to Gemini
+      if (response) {
+        // Handle locally - instant response
+        console.log('Local/memory response:', response);
         
-        // Add to turns as Kookie's response
+        // Add to turns
         setTurns(prev => [
           ...prev,
-          { role: 'kookie', text: localResponse!, timestamp: Date.now(), mode: currentMode }
+          { role: 'kookie', text: response!, timestamp: Date.now(), mode: currentMode }
         ]);
         
-        // Speak the response using text-to-speech
+        // Speak the response
         if (sessionRef.current) {
-          await sessionRef.current.send({ text: localResponse! });
+          await sessionRef.current.send({ text: response! });
         }
       } else {
-        // No local intent - send to Gemini for AI response
+        // No local match - send to Gemini with context
         console.log('Sending to Gemini AI');
+        
+        // Build context-aware prompt
+        const contextNote = previousQueryRef.current 
+          ? `[Context: Previous query was "${previousQueryRef.current}". Conversation mode: ${conversationModeRef.current}]`
+          : '';
+        
+        const fullQuery = contextNote ? `${contextNote}\nUser: ${query}` : query;
+        
         if (sessionRef.current) {
-          await sessionRef.current.send({ text: query });
+          await sessionRef.current.send({ text: fullQuery });
         }
+        
+        // Save context for next turn
+        previousQueryRef.current = query;
       }
     } catch (err) {
       console.error('Error processing queued query:', err);
@@ -489,6 +523,120 @@ const App: React.FC = () => {
 
   const resetInterruptCounter = useCallback(() => {
     interruptCountRef.current = 0;
+  }, []);
+
+  // MEMORY SYSTEM - Detect and handle memory commands
+  const detectMemoryCommand = useCallback((query: string): { action: 'save' | 'get' | 'delete' | 'list', key?: string, value?: string } | null => {
+    const lowerQuery = query.toLowerCase();
+    
+    // Save memory: "remember X is Y" or "save that X is Y"
+    if (lowerQuery.includes('remember') || lowerQuery.includes('save that')) {
+      const match = query.match(/(?:remember|save that)\s+(.+?)\s+is\s+(.+)/i);
+      if (match && match[1] && match[2]) {
+        return { action: 'save', key: match[1].trim(), value: match[2].trim() };
+      }
+    }
+    
+    // Get memory: "what is my X" or "do you remember X"
+    if (lowerQuery.includes('what is my') || lowerQuery.includes('do you remember')) {
+      const match = query.match(/(?:what is my|do you remember)\s+(.+)/i);
+      if (match && match[1]) {
+        return { action: 'get', key: match[1].trim().replace('?', '') };
+      }
+    }
+    
+    // Delete memory: "forget X" or "remove X"
+    if (lowerQuery.includes('forget') || lowerQuery.includes('remove')) {
+      const match = query.match(/(?:forget|remove)\s+(.+)/i);
+      if (match && match[1]) {
+        return { action: 'delete', key: match[1].trim().replace('?', '') };
+      }
+    }
+    
+    // List memories: "show memories" or "what do you know about me"
+    if (lowerQuery.includes('show memories') || lowerQuery.includes('what do you know about me')) {
+      return { action: 'list' };
+    }
+    
+    return null;
+  }, []);
+
+  const handleMemoryCommand = useCallback(async (command: { action: 'save' | 'get' | 'delete' | 'list', key?: string, value?: string }): Promise<string> => {
+    try {
+      switch (command.action) {
+        case 'save':
+          if (command.key && command.value) {
+            // Import dynamically to avoid SSR issues
+            const { saveMemory } = await import('./utils/memory');
+            saveMemory(command.key.toLowerCase(), command.value);
+            return `I'll remember that ${command.key} is ${command.value}`;
+          }
+          return "I couldn't save that memory";
+          
+        case 'get':
+          if (command.key) {
+            const { getMemory } = await import('./utils/memory');
+            const value = getMemory(command.key.toLowerCase());
+            if (value) {
+              return `Your ${command.key} is ${value}`;
+            } else {
+              return `I don't have any information about ${command.key}`;
+            }
+          }
+          return "I couldn't retrieve that memory";
+          
+        case 'delete':
+          if (command.key) {
+            const { deleteMemory } = await import('./utils/memory');
+            deleteMemory(command.key.toLowerCase());
+            return `I've forgotten about ${command.key}`;
+          }
+          return "I couldn't delete that memory";
+          
+        case 'list':
+          const { getMemories } = await import('./utils/memory');
+          const memories = getMemories();
+          const keys = Object.keys(memories);
+          if (keys.length > 0) {
+            return `I remember ${keys.length} things about you: ${keys.join(', ')}`;
+          }
+          return "I don't have any memories stored yet";
+          
+        default:
+          return "I'm not sure how to help with that memory";
+      }
+    } catch (err) {
+      console.error('Memory command error:', err);
+      return "I encountered an error accessing memories";
+    }
+  }, []);
+
+  // UPDATE CONTEXT - Keep track of conversation state
+  const updateContext = useCallback(() => {
+    lastInteractionRef.current = Date.now();
+    conversationModeRef.current = true;
+    contextRef.current.interactionCount++;
+    contextRef.current.time = new Date();
+  }, []);
+
+  // CHECK CONVERSATION TIMEOUT - Auto-deactivate after 30 seconds of silence
+  const checkConversationTimeout = useCallback(() => {
+    const now = Date.now();
+    const elapsed = now - lastInteractionRef.current;
+    
+    if (elapsed > 30000 && conversationModeRef.current) {
+      conversationModeRef.current = false;
+      console.log('Conversation mode deactivated (30s timeout)');
+    }
+  }, []);
+
+  // GET NATURAL GREETING based on time
+  const getNaturalGreeting = useCallback(() => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 17) return "Good afternoon";
+    if (hour < 21) return "Good evening";
+    return "Good night";
   }, []);
 
   const checkMicrophonePermission = async () => {
