@@ -406,7 +406,7 @@ const App: React.FC = () => {
         // Initialize audio contexts with better compatibility
         const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
         audioCtxRef.current = new AudioContext({ sampleRate: 16000 });
-        outAudioCtxRef.current = new AudioContext({ sampleRate: 16000 });
+        outAudioCtxRef.current = new AudioContext({ sampleRate: 24000 });
         
         // Resume context if it's suspended (common issue in Chrome)
         if (audioCtxRef.current.state === 'suspended') {
@@ -530,7 +530,7 @@ const App: React.FC = () => {
             // Handle Audio Output
             const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
             if (base64Audio && outAudioCtxRef.current) {
-              const audioBuffer = await decodeAudioData(decode(base64Audio), outAudioCtxRef.current, 16000, 1);
+              const audioBuffer = await decodeAudioData(decode(base64Audio), outAudioCtxRef.current, 24000, 1);
               const source = outAudioCtxRef.current.createBufferSource();
               source.buffer = audioBuffer;
               source.connect(outAudioCtxRef.current.destination);
