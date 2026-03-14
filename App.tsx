@@ -6,6 +6,9 @@ import { decode, decodeAudioData, createBlob } from './utils/audioHelpers';
 import Orb from './components/Orb';
 import TranscriptionPanel from './components/TranscriptionPanel';
 
+// Initialize AI once at module level (Optimization #3)
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+
 const SYSTEM_INSTRUCTION = `You are "KOOKIE", a highly advanced multimodal AI companion. 
 Your primary trait is adaptive empathy. You must analyze the user's tone, pacing, and emotional state.
 
@@ -15,6 +18,7 @@ RESPONSE OPTIMIZATION:
 - For factual questions, give the direct answer first
 - Keep explanations brief unless user asks for more details
 - Use conversational, natural language without unnecessary elaboration
+- Prioritize speed while maintaining accuracy and empathy
 
 MODES:
 1. Academic: If the user sounds focused, asks factual questions, or needs tutoring. Be precise, encouraging, and structured.
@@ -444,8 +448,9 @@ const App: React.FC = () => {
           });
         }
       }
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+      // AI instance already initialized at module level (Optimization #3)
 
+      // Optimization #1: Use faster Flash model for real-time responses
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         config: {
