@@ -324,6 +324,12 @@ const App: React.FC = () => {
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
   const [audioLevel, setAudioLevel] = useState(0);
 
+  // CONVERSATION FLOW CONTROLS
+  const isSpeakingRef = useRef(false);           // Speaking lock
+  const interruptCountRef = useRef(0);            // Interrupt counter
+  const queryQueueRef = useRef<string[]>([]);     // Input queue
+  const isProcessingRef = useRef(false);          // Processing lock
+
   const audioCtxRef = useRef<AudioContext | null>(null);
   const outAudioCtxRef = useRef<AudioContext | null>(null);
   const sessionRef = useRef<any>(null);
@@ -356,6 +362,63 @@ const App: React.FC = () => {
     });
     sourcesRef.current.clear();
     nextStartTimeRef.current = 0;
+    isSpeakingRef.current = false;
+  }, []);
+
+  // CONVERSATION FLOW HELPERS
+  const processQueryQueue = useCallback(async () => {
+    // Don't process if already speaking or processing
+    if (isSpeakingRef.current || isProcessingRef.current || queryQueueRef.current.length === 0) {
+      return;
+    }
+
+    // Get next query from queue
+    const query = queryQueueRef.current.shift();
+    if (!query || query.trim().length < 3) {
+      // Filter noise - too short queries
+      return;
+    }
+
+    isProcessingRef.current = true;
+
+    try {
+      // Send query to AI
+      if (sessionRef.current) {
+        await sessionRef.current.send({ text: query });
+      }
+    } catch (err) {
+      console.error('Error processing queued query:', err);
+    } finally {
+      isProcessingRef.current = false;
+      // Process next item in queue after delay
+      setTimeout(() => processQueryQueue(), 500);
+    }
+  }, []);
+
+  const handleUserInterruption = useCallback(() => {
+    interruptCountRef.current++;
+    
+    // Warn user if too many interruptions
+    if (interruptCountRef.current >= 3) {
+      const warningMessage = "Please ask questions slowly. I cannot handle this many interruptions.";
+      
+      // Add warning to turns
+      setTurns(prev => [
+        ...prev,
+        { role: 'kookie', text: warningMessage, timestamp: Date.now(), mode: currentMode }
+      ]);
+      
+      // Reset counter
+      interruptCountRef.current = 0;
+      
+      console.log('Too many interruptions - warned user');
+    } else {
+      console.log(`Interruption ${interruptCountRef.current}/3 - ignoring`);
+    }
+  }, [currentMode]);
+
+  const resetInterruptCounter = useCallback(() => {
+    interruptCountRef.current = 0;
   }, []);
 
   const checkMicrophonePermission = async () => {
@@ -478,6 +541,8 @@ const App: React.FC = () => {
               setAudioLevel(Math.sqrt(sum / inputData.length));
 
               const pcmBlob = createBlob(inputData);
+              
+              // Send audio to Gemini in real-time
               sessionPromise.then(session => session.sendRealtimeInput({ media: pcmBlob }));
             };
 
@@ -517,9 +582,33 @@ const App: React.FC = () => {
               currentOutputTransRef.current = '';
             }
 
-            // Handle Interruption (immediate priority)
+            // Handle Interruption with smart filtering
             if (message.serverContent?.interrupted) {
-              stopAllAudio();
+              // Check if user is actually interrupting or just noise
+              const currentTranscript = currentInputTransRef.current;
+              
+              // Filter: ignore if transcript is too short (likely noise)
+              if (currentTranscript.length < 3) {
+                console.log('Ignoring short interruption (< 3 chars)');
+                return;
+              }
+
+              // If Kookie is speaking, handle the interruption
+              if (isSpeakingRef.current) {
+                handleUserInterruption();
+                
+                // Stop current speech
+                stopAllAudio();
+                
+                // Clear the queue to process this interruption immediately
+                queryQueueRef.current = [];
+                
+                // Add the interrupting query to queue
+                queryQueueRef.current.push(currentTranscript);
+                
+                // Process immediately
+                setTimeout(() => processQueryQueue(), 100);
+              }
             }
 
             // Handle Tool Calls (parallel execution)
@@ -557,14 +646,27 @@ const App: React.FC = () => {
                     source.buffer = audioBuffer;
                     source.connect(outAudioCtxRef.current.destination);
                     
+                    // Set speaking lock
+                    isSpeakingRef.current = true;
+                    
                     nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outAudioCtxRef.current.currentTime);
                     source.start(nextStartTimeRef.current);
                     nextStartTimeRef.current += audioBuffer.duration;
                     
                     sourcesRef.current.add(source);
-                    source.onended = () => sourcesRef.current.delete(source);
+                    source.onended = () => {
+                      sourcesRef.current.delete(source);
+                      // Release speaking lock when audio finishes
+                      if (sourcesRef.current.size === 0) {
+                        isSpeakingRef.current = false;
+                        resetInterruptCounter();
+                        // Process next query in queue
+                        setTimeout(() => processQueryQueue(), 500);
+                      }
+                    };
                   } catch (err) {
                     console.error('Parallel audio playback error:', err);
+                    isSpeakingRef.current = false;
                   }
                 })()
               );
@@ -572,9 +674,30 @@ const App: React.FC = () => {
 
             // Execute all operations in parallel - don't wait for any single one
             await Promise.allSettled(promises);
+            
+            // Handle user turn completion - queue their query
+            if (message.serverContent?.turnComplete && currentInputTransRef.current) {
+              const userQuery = currentInputTransRef.current.trim();
+              
+              // Only queue meaningful queries (filter noise)
+              if (userQuery.length >= 3) {
+                // Add to queue instead of processing immediately
+                queryQueueRef.current.push(userQuery);
+                console.log(`Query queued: "${userQuery}" (queue size: ${queryQueueRef.current.length})`);
+                
+                // Process queue if not currently speaking or processing
+                if (!isSpeakingRef.current && !isProcessingRef.current) {
+                  processQueryQueue();
+                }
+              }
+            }
           },
           onerror: (e) => console.error("Session Error:", e),
-          onclose: () => setIsActive(false),
+          onclose: () => {
+            setIsActive(false);
+            isSpeakingRef.current = false;
+            isProcessingRef.current = false;
+          },
         }
       });
 
